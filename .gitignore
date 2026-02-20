@@ -1,0 +1,15 @@
+# FASTQ data (large files - do not commit to GitHub)
+fastq/
+fastq_trim/
+
+# R Markdown documentation (kept locally)
+rmarkdowns/
+
+# Snakemake
+.snakemake/
+
+# SLURM job logs
+job_reports/
+
+# Logs
+*.log

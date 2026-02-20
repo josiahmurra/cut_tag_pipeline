@@ -1,0 +1,24 @@
+# Snakemake SLURM profile
+# Use with: snakemake --profile profiles/slurm
+# Requires: pip install snakemake-executor-plugin-slurm (for Snakemake 8+)
+
+executor: slurm
+use-envmodules: true
+
+# Number of jobs to run in parallel on the cluster
+jobs: 20
+
+# SLURM-specific defaults (required on most institutional clusters)
+# Our cluster limits mem-per-cpu to 7.5 GB, so we use mem_mb_per_cpu (not mem_mb)
+# to ensure memory and CPU stay coordinated: each CPU gets ≤7.5 GB.
+# Use "default-resources" (hyphen) to match Snakemake CLI --default-resources.
+# See README "SLURM profile" section for YAML → #SBATCH mapping.
+"default-resources":
+  slurm_account: "srrao"      # --account
+  slurm_partition: "normal"   # --partition / -p
+  mem_mb_per_cpu: 7000       # --mem-per-cpu (MB). Keep ≤7500 for 7.5 GB limit.
+  runtime: 1080              # --time (minutes). 1080 = 18 hours.
+
+# Log directory for SLURM output/error files
+# → -o job_reports/%x.out, -e job_reports/%x.err
+"slurm-logdir": "job_reports"

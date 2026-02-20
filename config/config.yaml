@@ -1,0 +1,26 @@
+# CUT&Tag pipeline configuration
+
+# Paths (relative to workflow directory)
+fastq_dir: "fastq"
+fastq_trim_dir: "fastq_trim"
+
+# FASTQ naming: sample ID is the prefix before the read-pair suffix
+# Using .1. / .2. allows underscores in sample names (e.g. genotype_target_replicate)
+fastq_suffix_r1: ".1.fq.gz"
+fastq_suffix_r2: ".2.fq.gz"
+
+# Cutadapt settings (Illumina Nextera adapters)
+cutadapt:
+  adapter_1: "CTGTCTCTTATACACATCT"
+  adapter_2: "CTGTCTCTTATACACATCT"
+  min_length: 20
+  threads: 5
+
+# Environment modules (cluster-specific; adjust if your module names differ)
+modules:
+  cutadapt: "cutadapt/4.0"
+
+# Optional: explicit sample list. If empty, samples are discovered from fastq_dir
+# Format: sample ID is the prefix before .1.fq.gz / .2.fq.gz
+# Example: ["WT_CTCF_Rep1", "KO_H3K27me3_Rep2"]
+samples: []
