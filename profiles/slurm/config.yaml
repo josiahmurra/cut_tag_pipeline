@@ -22,3 +22,5 @@ jobs: 20
 # Log directory for SLURM output/error files
 # → -o job_reports/%x.out, -e job_reports/%x.err
 "slurm-logdir": "job_reports"
+# Keep job logs even when successful (for stderr, etc.)
+"slurm-keep-successful-logs": true

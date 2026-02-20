@@ -1,0 +1,66 @@
+==========================================
+SLURM_JOB_ID = 6138907
+SLURM_NODELIST = cn29
+==========================================
+Using profile profiles/slurm for setting default command line arguments.
+host: cn29.cluster.local
+Building DAG of jobs...
+You are running snakemake in a SLURM job context. This is not recommended, as it may lead to unexpected behavior. If possible, please run Snakemake directly on the login node.
+SLURM run ID: 33792f1a-a608-49be-b3c4-b0e559597d10
+MinJobAge 300s (>= 120s). 'squeue' should work reliably for status queries.
+Using shell: /usr/bin/bash
+Provided remote nodes: 20
+Job stats:
+job      count
+-----  -------
+align        1
+all          1
+trim         1
+total        3
+
+Select jobs to execute...
+Execute 1 jobs...
+
+[Fri Feb 20 16:55:55 2026]
+rule trim:
+    input: fastq/dummy_sample_rep1.1.fq.gz, fastq/dummy_sample_rep1.2.fq.gz
+    output: fastq_trim/dummy_sample_rep1.cut.1.fq.gz, fastq_trim/dummy_sample_rep1.cut.2.fq.gz
+    log: fastq_trim/logs/dummy_sample_rep1.cutadapt.log
+    jobid: 1
+    reason: Missing output files: fastq_trim/dummy_sample_rep1.cut.2.fq.gz, fastq_trim/dummy_sample_rep1.cut.1.fq.gz
+    wildcards: sample=dummy_sample_rep1
+    threads: 5
+    resources: tmpdir=<TBD>, disk_mb=1000, disk=1 GB, disk_mib=954, mem_mb=1000, mem=1 GB, mem_mib=954, slurm_account=srrao, slurm_partition=normal, mem_mb_per_cpu=7000, runtime=18
+Job 1 has been submitted with SLURM jobid 6138910 (log: job_reports/rule_trim/dummy_sample_rep1/6138910.log).
+[Fri Feb 20 16:56:30 2026]
+Finished jobid: 1 (Rule: trim)
+1 of 3 steps (33%) done
+Select jobs to execute...
+Execute 1 jobs...
+
+[Fri Feb 20 16:56:30 2026]
+rule align:
+    input: fastq_trim/dummy_sample_rep1.cut.1.fq.gz, fastq_trim/dummy_sample_rep1.cut.2.fq.gz
+    output: alignment/bam/dummy_sample_rep1.bowtie2.bam, alignment/bam/bowtie2_summary/dummy_sample_rep1.bowtie2.txt
+    jobid: 2
+    reason: Missing output files: alignment/bam/dummy_sample_rep1.bowtie2.bam; Input files updated by another job: fastq_trim/dummy_sample_rep1.cut.2.fq.gz, fastq_trim/dummy_sample_rep1.cut.1.fq.gz
+    wildcards: sample=dummy_sample_rep1
+    threads: 7
+    resources: tmpdir=<TBD>, disk_mb=1000, disk=1 GB, disk_mib=954, mem_mb=49000, mem=49 GB, mem_mib=46731, slurm_account=srrao, slurm_partition=normal, mem_mb_per_cpu=7000, runtime=18
+Job 2 has been submitted with SLURM jobid 6138914 (log: job_reports/rule_align/dummy_sample_rep1/6138914.log).
+[Fri Feb 20 16:57:11 2026]
+Finished jobid: 2 (Rule: align)
+2 of 3 steps (67%) done
+Select jobs to execute...
+Execute 1 jobs...
+
+[Fri Feb 20 16:57:11 2026]
+localrule all:
+    input: fastq_trim/dummy_sample_rep1.cut.1.fq.gz, fastq_trim/dummy_sample_rep1.cut.2.fq.gz, alignment/bam/dummy_sample_rep1.bowtie2.bam
+    jobid: 0
+    reason: Input files updated by another job: alignment/bam/dummy_sample_rep1.bowtie2.bam, fastq_trim/dummy_sample_rep1.cut.2.fq.gz, fastq_trim/dummy_sample_rep1.cut.1.fq.gz
+    resources: tmpdir=/tmp, disk_mb=1000, disk=1 GB, disk_mib=954, mem_mb=1000, mem=1 GB, mem_mib=954, slurm_account=srrao, slurm_partition=normal, mem_mb_per_cpu=7000, runtime=18
+[Fri Feb 20 16:57:11 2026]
+Finished jobid: 0 (Rule: all)
+3 of 3 steps (100%) done
+Complete log(s): /scratch/g/srrao/josiah_ociaml3/snake_testing/.snakemake/log/2026-02-20T165550.263002.snakemake.log

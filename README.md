@@ -4,25 +4,32 @@ A Snakemake workflow for CUT&Tag data analysis, designed to run on institutional
 
 ## Workflow organization
 
-**We use a per-project layout:** clone or copy this pipeline into each project directory. The Snakefile and config live alongside your data.
+**Typical usage:** Keep the pipeline in one place. Each project is a separate directory containing `config/`, `fastq/`, and (optionally) project-specific config overrides. Run Snakemake by pointing `--directory` at the project. You do **not** need to clone the repo for every run — clone once (or copy) and reuse.
 
 ```bash
+# One-time setup: clone the pipeline
 git clone https://github.com/josiahmurra/cut_tag_pipeline.git
-cd cut_tag_pipeline
 ```
 
+Typical layout:
+
 ```
-my_project/
+cut_tag_pipeline/          # Pipeline (clone once, keep central)
 ├── Snakefile
 ├── config/
 ├── profiles/
+├── scripts/
+└── ...
+
+my_project/                # Project directory (data + config)
+├── config/
+│   └── config.yaml        # Project-specific settings
 ├── fastq/
 └── ...
 ```
 
-This keeps each project self-contained and makes it easy to customize config or lock to a specific pipeline version. The Snakefile stays compact (~50–250 lines), so duplicating it per project is straightforward.
+You run from the pipeline directory and pass the project path: `sbatch scripts/run_snakemake_slurm.sh /path/to/my_project`.
 
-**Alternative (not used here):** You could keep the pipeline in a central folder and point Snakemake at project directories with `--directory`. We prefer the per-project approach for simplicity.
 
 ---
 
@@ -60,17 +67,24 @@ micromamba activate snakemake
 ## Pipeline structure
 
 ```
-cut_tag_pipeline/
+cut_tag_pipeline/          # Pipeline (central; clone once)
 ├── Snakefile              # Workflow definition
 ├── config/
-│   └── config.yaml        # Paths, tool settings, sample naming
+│   └── config.yaml        # Default paths, tool settings
 ├── profiles/
 │   └── slurm/
 │       └── config.yaml    # SLURM settings (account, partition, resources)
-├── fastq/                 # Raw FASTQ files go here
-├── fastq_trim/            # Trimmed output (created by pipeline)
-├── job_reports/           # SLURM logs (created by pipeline)
-└── rmarkdowns/            # R Markdown documentation
+├── scripts/
+│   └── run_snakemake_slurm.sh
+└── rmarkdowns/
+
+project_dir/               # Project (--directory points here)
+├── config/
+│   └── config.yaml        # Project-specific overrides (optional)
+├── fastq/                 # Raw FASTQ files
+├── fastq_trim/            # Trimmed output (created)
+├── alignment/             # BAMs, etc. (created)
+└── job_reports/           # SLURM logs (created)
 ```
 
 ## FASTQ naming convention
@@ -121,43 +135,28 @@ Edit this file if your cluster uses different defaults.
 
 ## Running the pipeline
 
-### Dry run (no jobs submitted)
+1. Edit `scripts/run_snakemake_slurm.sh` — set `--mail-user` to your email (one-time)
+2. From the pipeline directory:
+   ```bash
+   cd /path/to/cut_tag_pipeline
+   sbatch scripts/run_snakemake_slurm.sh /path/to/project
+   ```
 
-Check what would run without executing:
+You can disconnect; you get emails when the job starts, completes, or fails. Per-project layout: use `.` as the project path.
 
-```bash
-cd /path/to/cut_tag_pipeline
-snakemake -n --profile profiles/slurm
-```
-
-### Full run (submits jobs to SLURM)
-
+**Optional dry run** (check what would run):
 ```bash
 cd /path/to/cut_tag_pipeline
 micromamba activate snakemake
-snakemake --profile profiles/slurm
+snakemake -n --profile profiles/slurm --directory /path/to/project
 ```
-
-Snakemake will submit one SLURM job per sample per rule. Jobs run on the cluster; Snakemake monitors them from the login node until completion.
-
-### Local run (for testing, no SLURM)
-
-To run on your current machine without SLURM (useful for small test datasets):
-
-```bash
-snakemake --cores 4
-```
-
-Note: Use a local profile or omit the SLURM profile. The default SLURM profile submits to the cluster.
 
 ## Useful commands
 
 | Command | Purpose |
 |---------|---------|
-| `snakemake -n` | Dry run — show what would be executed |
-| `snakemake --dag \| dot -Tpng -o dag.png` | Generate DAG visualization |
-| `snakemake -n --summary` | Summary of jobs to run |
-| `snakemake --unlock` | Unlock if a previous run was interrupted |
+| `snakemake -n --directory /path/to/project` | Dry run |
+| `snakemake --unlock --directory /path/to/project` | Unlock if a run was interrupted |
 
 ## Troubleshooting
 

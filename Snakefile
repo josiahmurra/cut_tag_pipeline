@@ -23,11 +23,19 @@ TRIMMED = expand(
     pair=["1", "2"],
 )
 
+# Alignment rule outputs for the final target
+ALIGNED = expand(
+    "{dir}/{sample}.bowtie2.bam",
+    dir=config["align_bam_dir"],
+    sample=SAMPLES,
+)
+
 
 rule all:
-    """Build all trimmed FASTQ files."""
+    """Build all trimmed FASTQ files and aligned BAMs."""
     input:
-        TRIMMED
+        TRIMMED,
+        ALIGNED,
 
 
 rule trim:
@@ -57,4 +65,35 @@ rule trim:
             -o {output.r1} -p {output.r2} \
             {input.r1} {input.r2} \
             > {log} 2>&1
+        """
+
+
+rule align:
+    """Align trimmed reads with Bowtie2 and convert to BAM."""
+    input:
+        r1=f"{config['fastq_trim_dir']}/{{sample}}.cut.1.fq.gz",
+        r2=f"{config['fastq_trim_dir']}/{{sample}}.cut.2.fq.gz",
+    output:
+        bam=f"{config['align_bam_dir']}/{{sample}}.bowtie2.bam",
+        log=f"{config['align_summary_dir']}/{{sample}}.bowtie2.txt",
+    threads:
+        config["bowtie2"]["threads"]
+    resources:
+        mem_mb=49000  # 7 threads × 7000 MB/CPU; overrides Snakemake's input-based estimate (~1.35 GB)
+    params:
+        index=config["bowtie2"]["index_base"],
+    envmodules:
+        config["modules"]["bowtie2"],
+        config["modules"]["samtools"],
+    shell:
+        """
+        bowtie2 \
+            --local --very-sensitive \
+            --no-mixed --no-discordant \
+            --phred33 -I 10 -X 700 \
+            -p {threads} \
+            -x {params.index} \
+            -1 {input.r1} -2 {input.r2} \
+            2> {output.log} \
+        | samtools view -@ {threads} -bS -o {output.bam} -
         """
