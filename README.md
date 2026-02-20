@@ -7,11 +7,9 @@ A Snakemake workflow for CUT&Tag data analysis, designed to run on institutional
 **We use a per-project layout:** clone or copy this pipeline into each project directory. The Snakefile and config live alongside your data.
 
 ```bash
-git clone https://github.com/YOUR_ORG/repo-name.git
-cd repo-name
+git clone https://github.com/josiahmurra/cut_tag_pipeline.git
+cd cut_tag_pipeline
 ```
-
-Replace `YOUR_ORG/repo-name` with your actual GitHub org and repo.
 
 ```
 my_project/
