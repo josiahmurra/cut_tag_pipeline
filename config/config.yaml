@@ -21,6 +21,22 @@ cutadapt:
 # Alignment paths
 align_bam_dir: "alignment/bam"
 align_summary_dir: "alignment/bam/bowtie2_summary"
+picard_metrics_dir: "alignment/bam/picard_summary"
+
+# QC: alignment QC outputs (SampleList, manifest, RDS) and figures in figures/
+alignment_qc_dir: "qc"
+
+# FastQC and MultiQC: under qc/ with fastqc/ and multiqc/ subdirs, each with raw/ and trimmed/
+fastqc_raw_dir: "qc/fastqc/raw"
+fastqc_trimmed_dir: "qc/fastqc/trimmed"
+multiqc_raw_dir: "qc/multiqc/raw"
+multiqc_trimmed_dir: "qc/multiqc/trimmed"
+
+# Figures (all QC plots; single directory in project root)
+figures_dir: "figures"
+
+# BEDPE output from MACS3 filterdup (optional; default in Snakefile is alignment/bed)
+bed_dir: "alignment/bed"
 
 # Bowtie2 reference index (pre-built; path without .1.bt2 extension)
 bowtie2:
@@ -32,9 +48,46 @@ modules:
   cutadapt: "cutadapt/4.0"
   bowtie2: "bowtie/2.5.0"
   samtools: "samtools"
+  r: "R/4.4.2"
+  fastqc: "fastqc"
+  multiqc: "multiqc"
+  picard: "picard"
+  macs3: "macs3/3.0.2"
+
+# MACS3 filterdup (BAM → BEDPE)
+macs3_gsize: "hs"       # genome size: hs, mm, etc.
+macs3_keep_dup: "auto"  # 1 = keep one per location; "auto" = binomial; "all" = no filtering
+
+# 500 bp binned fragment BED (bin500_bed rule)
+fragment_bin_length: 500  # bin width in bp; output: chrom, bin_center, count
 
 # Optional: explicit sample list. If empty, samples are auto-discovered from fastq_dir.
 # Use when you want to run only a subset of samples in fastq_dir (e.g. for testing or re-runs).
 # Sample ID is the prefix before the read-pair suffix (see fastq_suffix_r1/r2).
 # Example: ["WT_CTCF_Rep1", "KO_H3K27me3_Rep2"]
 samples: []
+
+# MACS3 peak calling: target vs control (IgG) pairing
+# - Target samples: any sample whose name does not contain the control_pattern (e.g. IgG).
+# - Default control: built from target name as {genotype}_IgG_{replicate} (using sample_delimiter "_", 3 parts).
+# - Overrides: when an IgG fails, set that target to use a different control (e.g. another replicate).
+#   Key = target sample to override the control for; value = control sample to use (e.g. backup IgG).
+#   Only list exceptions; all other targets use default control.
+# Example (for target WT_CTCF_Rep1 use WT_IgG_Rep2 as control instead of default WT_IgG_Rep1):
+#   macs3_control_overrides:
+#     "WT_CTCF_Rep1": "WT_IgG_Rep2"
+# Multiple overrides:
+#   macs3_control_overrides:
+#     "WT_CTCF_Rep1": "WT_IgG_Rep2"
+#     "KO_H3K27me3_Rep1": "KO_IgG_Rep2"
+# No overrides (default control used for every target):
+#   macs3_control_overrides: {}
+macs3_peak_dir: "peakCalling/MACS3"
+control_pattern: "IgG"
+sample_delimiter: "_"
+macs3_control_overrides: {}  # e.g. "TargetSample": "ControlSampleToUse"
+macs3_broad_marks: ["H3K27me3"]
+macs3_q_narrow: 0.00001
+macs3_broad_cutoff: 0.0001
+# Run cutoff analysis (writes NAME_cutoff_analysis.txt for elbow plots; compare your q with other cutoffs)
+macs3_cutoff_analysis: true

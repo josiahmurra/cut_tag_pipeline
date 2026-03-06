@@ -1,0 +1,267 @@
+"""
+CUT&Tag pipeline - Snakemake workflow
+Uses environment modules (--use-envmodules) for tool management.
+Run from the project directory (e.g. via run_snakemake_slurm.sh with -s path/to/Snakefile).
+alignment_qc runs locally and passes explicit input/output file paths to R (no cwd or directory logic).
+"""
+
+configfile: "config/config.yaml"
+
+import os
+
+# Run alignment_qc on the main Snakemake process; we pass file paths so R doesn't depend on cwd.
+localrules: alignment_qc
+
+# Discover samples: from config if specified, otherwise from fastq directory
+def get_samples():
+    if config.get("samples"):
+        return config["samples"]
+    # Pattern: {sample_id}.{suffix} where suffix is .1.fq.gz (from config)
+    pattern = f"{config['fastq_dir']}/{{sample}}{config['fastq_suffix_r1']}"
+    return sorted(glob_wildcards(pattern).sample)
+
+SAMPLES = get_samples()
+
+# Trim rule outputs for the final target
+TRIMMED = expand(
+    "{dir}/{sample}.cut.{pair}.fq.gz",
+    dir=config["fastq_trim_dir"],
+    sample=SAMPLES,
+    pair=["1", "2"],
+)
+
+# Alignment rule outputs for the final target
+ALIGNED = expand(
+    "{dir}/{sample}.bowtie2.bam",
+    dir=config["align_bam_dir"],
+    sample=SAMPLES,
+)
+
+# Alignment QC: one rule that uses all bowtie2 summary files
+ALIGNMENT_QC = [
+    f"{config['alignment_qc_dir']}/SampleList.txt",
+    f"{config['alignment_qc_dir']}/alignSummary.rds",
+    f"{config['figures_dir']}/alignment_rate.pdf",
+    f"{config['figures_dir']}/mapped_fragments.pdf",
+    f"{config['figures_dir']}/sequencing_depth.pdf",
+]
+
+# FastQC and MultiQC dirs (defaults so project configs without these keys still work)
+fastqc_raw_dir = config.get("fastqc_raw_dir", "fastqc_raw")
+fastqc_trimmed_dir = config.get("fastqc_trimmed_dir", "fastqc_trimmed")
+multiqc_raw_dir = config.get("multiqc_raw_dir", "multiqc_raw")
+multiqc_trimmed_dir = config.get("multiqc_trimmed_dir", "multiqc_trimmed")
+
+# FastQC outputs (raw and trimmed) for MultiQC
+FASTQC_RAW_ZIPS = (
+    expand(f"{fastqc_raw_dir}/{{sample}}.1_fastqc.zip", sample=SAMPLES)
+    + expand(f"{fastqc_raw_dir}/{{sample}}.2_fastqc.zip", sample=SAMPLES)
+)
+FASTQC_TRIMMED_ZIPS = (
+    expand(f"{fastqc_trimmed_dir}/{{sample}}.cut.1_fastqc.zip", sample=SAMPLES)
+    + expand(f"{fastqc_trimmed_dir}/{{sample}}.cut.2_fastqc.zip", sample=SAMPLES)
+)
+MULTIQC_RAW_REPORT = f"{multiqc_raw_dir}/multiqc_report.html"
+MULTIQC_TRIMMED_REPORT = f"{multiqc_trimmed_dir}/multiqc_report.html"
+
+
+rule all:
+    """Build all trimmed FASTQ files, aligned BAMs, alignment QC plots, and FastQC/MultiQC reports."""
+    input:
+        TRIMMED,
+        ALIGNED,
+        ALIGNMENT_QC,
+        FASTQC_RAW_ZIPS,
+        FASTQC_TRIMMED_ZIPS,
+        MULTIQC_RAW_REPORT,
+        MULTIQC_TRIMMED_REPORT,
+
+
+rule trim:
+    """Trim adapter sequences from paired-end FASTQs using cutadapt."""
+    input:
+        r1=f"{config['fastq_dir']}/{{sample}}{config['fastq_suffix_r1']}",
+        r2=f"{config['fastq_dir']}/{{sample}}{config['fastq_suffix_r2']}",
+    output:
+        r1=f"{config['fastq_trim_dir']}/{{sample}}.cut.1.fq.gz",
+        r2=f"{config['fastq_trim_dir']}/{{sample}}.cut.2.fq.gz",
+    log:
+        f"{config['fastq_trim_dir']}/logs/{{sample}}.cutadapt.log",
+    threads:
+        config["cutadapt"]["threads"]
+    params:
+        min_length=config["cutadapt"]["min_length"],
+        adapter_1=config["cutadapt"]["adapter_1"],
+        adapter_2=config["cutadapt"]["adapter_2"],
+    envmodules:
+        config["modules"]["cutadapt"],
+    shell:
+        """
+        cutadapt -j {threads} \
+            -m {params.min_length} \
+            -a {params.adapter_1} \
+            -A {params.adapter_2} \
+            -o {output.r1} -p {output.r2} \
+            {input.r1} {input.r2} \
+            > {log} 2>&1
+        """
+
+
+rule align:
+    """Align trimmed reads with Bowtie2 and convert to BAM."""
+    input:
+        r1=f"{config['fastq_trim_dir']}/{{sample}}.cut.1.fq.gz",
+        r2=f"{config['fastq_trim_dir']}/{{sample}}.cut.2.fq.gz",
+    output:
+        bam=f"{config['align_bam_dir']}/{{sample}}.bowtie2.bam",
+        log=f"{config['align_summary_dir']}/{{sample}}.bowtie2.txt",
+    threads:
+        config["bowtie2"]["threads"]
+    resources:
+        mem_mb=49000  # 7 threads × 7000 MB/CPU; overrides Snakemake's input-based estimate (~1.35 GB)
+    params:
+        index=config["bowtie2"]["index_base"],
+    envmodules:
+        config["modules"]["bowtie2"],
+        config["modules"]["samtools"],
+    shell:
+        """
+        bowtie2 \
+            --local --very-sensitive \
+            --no-mixed --no-discordant \
+            --phred33 -I 10 -X 700 \
+            -p {threads} \
+            -x {params.index} \
+            -1 {input.r1} -2 {input.r2} \
+            2> {output.log} \
+        | samtools view -@ {threads} -bS -o {output.bam} -
+        """
+
+
+rule fastqc_raw:
+    """Run FastQC on raw (pre-trim) paired-end FASTQs; one job per sample."""
+    input:
+        r1=f"{config['fastq_dir']}/{{sample}}{config['fastq_suffix_r1']}",
+        r2=f"{config['fastq_dir']}/{{sample}}{config['fastq_suffix_r2']}",
+    output:
+        r1_zip=f"{fastqc_raw_dir}/{{sample}}.1_fastqc.zip",
+        r2_zip=f"{fastqc_raw_dir}/{{sample}}.2_fastqc.zip",
+    log:
+        f"{fastqc_raw_dir}/logs/{{sample}}.fastqc.log",
+    params:
+        outdir=fastqc_raw_dir,
+    threads: 1
+    resources:
+        mem_mb=2048,  # FastQC needs very little; 2 GB is plenty per sample
+        runtime=30,   # minutes; FastQC is quick per sample
+    envmodules:
+        config.get("modules", {}).get("fastqc", "fastqc"),
+    shell:
+        """
+        mkdir -p {params.outdir}/logs && \
+        fastqc -o {params.outdir} -f fastq {input.r1} {input.r2} >> {log} 2>&1
+        """
+
+
+rule fastqc_trimmed:
+    """Run FastQC on trimmed paired-end FASTQs; one job per sample."""
+    input:
+        r1=f"{config['fastq_trim_dir']}/{{sample}}.cut.1.fq.gz",
+        r2=f"{config['fastq_trim_dir']}/{{sample}}.cut.2.fq.gz",
+    output:
+        r1_zip=f"{fastqc_trimmed_dir}/{{sample}}.cut.1_fastqc.zip",
+        r2_zip=f"{fastqc_trimmed_dir}/{{sample}}.cut.2_fastqc.zip",
+    log:
+        f"{fastqc_trimmed_dir}/logs/{{sample}}.fastqc.log",
+    params:
+        outdir=fastqc_trimmed_dir,
+    threads: 1
+    resources:
+        mem_mb=2048,  # FastQC needs very little; 2 GB is plenty per sample
+        runtime=30,   # minutes; FastQC is quick per sample
+    envmodules:
+        config.get("modules", {}).get("fastqc", "fastqc"),
+    shell:
+        """
+        mkdir -p {params.outdir}/logs && \
+        fastqc -o {params.outdir} -f fastq {input.r1} {input.r2} >> {log} 2>&1
+        """
+
+
+rule multiqc_raw:
+    """Aggregate FastQC results for raw FASTQs into one MultiQC report."""
+    input:
+        FASTQC_RAW_ZIPS,
+    output:
+        report=MULTIQC_RAW_REPORT,
+    log:
+        f"{multiqc_raw_dir}/multiqc.log",
+    params:
+        outdir=multiqc_raw_dir,
+    threads: 1
+    resources:
+        mem_mb=2048,  # MultiQC is lightweight; 2 GB is plenty
+        runtime=30,   # minutes; MultiQC aggregates quickly
+    envmodules:
+        config.get("modules", {}).get("multiqc", "multiqc"),
+    shell:
+        """
+        mkdir -p {params.outdir} && \
+        multiqc {fastqc_raw_dir} -o {params.outdir} >> {log} 2>&1
+        """
+
+
+rule multiqc_trimmed:
+    """Aggregate FastQC results for trimmed FASTQs into one MultiQC report."""
+    input:
+        FASTQC_TRIMMED_ZIPS,
+    output:
+        report=MULTIQC_TRIMMED_REPORT,
+    log:
+        f"{multiqc_trimmed_dir}/multiqc.log",
+    params:
+        outdir=multiqc_trimmed_dir,
+    threads: 1
+    resources:
+        mem_mb=2048,  # MultiQC is lightweight; 2 GB is plenty
+        runtime=30,   # minutes; MultiQC aggregates quickly
+    envmodules:
+        config.get("modules", {}).get("multiqc", "multiqc"),
+    shell:
+        """
+        mkdir -p {params.outdir} && \
+        multiqc {fastqc_trimmed_dir} -o {params.outdir} >> {log} 2>&1
+        """
+
+
+rule alignment_qc:
+    """Plot alignment QC (rate, mapped fragments, depth) from all bowtie2 summary files.
+    Summary manifest is written with Python so paths are absolute; R runs via shell so envmodules (R) is loaded."""
+    input:
+        script=workflow.basedir + "/scripts/alignment_qc_plots.R",
+        summary_files=expand(
+            "{dir}/{sample}.bowtie2.txt",
+            dir=config["align_summary_dir"],
+            sample=SAMPLES,
+        ),
+    output:
+        sample_list=f"{config['alignment_qc_dir']}/SampleList.txt",
+        summary_manifest=f"{config['alignment_qc_dir']}/summary_paths.txt",
+        rds=f"{config['alignment_qc_dir']}/alignSummary.rds",
+        fig_align_rate=f"{config['figures_dir']}/alignment_rate.pdf",
+        fig_mapped=f"{config['figures_dir']}/mapped_fragments.pdf",
+        fig_depth=f"{config['figures_dir']}/sequencing_depth.pdf",
+    log:
+        "job_reports/alignment_qc.log",
+    params:
+        alignment_qc_dir=config["alignment_qc_dir"],
+        figures_dir=config["figures_dir"],
+    envmodules:
+        config["modules"]["r"],
+    shell:
+        """
+        mkdir -p job_reports {params.alignment_qc_dir} {params.figures_dir} && \
+        for f in {input.summary_files}; do basename "$$f" .bowtie2.txt; done | sort -u > {output.sample_list} && \
+        python3 -c "import os, sys; [print(os.path.abspath(p)) for p in sys.argv[1:]]" {input.summary_files} > {output.summary_manifest} && \
+        Rscript {input.script} {output.sample_list} {output.rds} {output.fig_align_rate} {output.fig_mapped} {output.fig_depth} {output.summary_manifest} >> {log} 2>&1
+        """

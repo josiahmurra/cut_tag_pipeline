@@ -4,6 +4,7 @@ fastq_trim/
 
 # R Markdown documentation (kept locally)
 rmarkdowns/
+rmarkdowns_v2/
 
 # Snakemake
 .snakemake/
